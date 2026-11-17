@@ -1,0 +1,7 @@
+{
+  "include": ["file_manager", "tests"],
+  "extraPaths": ["."],
+  "pythonVersion": "3.9",
+  "venvPath": "C:\\CNCFileManager",
+  "venv": "venv"
+}
