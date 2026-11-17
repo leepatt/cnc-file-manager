@@ -1,0 +1,622 @@
+{% extends "base.html" %}
+
+{% block title %}File Manager{% endblock %}
+
+{% block header_meta %}
+  <span id="connection-badge" class="badge badge--warning">Disconnected</span>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  /* Connection panel */
+  .connect-panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .connect-panel h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 20px;
+    color: var(--ink);
+  }
+  .ip-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .ip-row input {
+    flex: 1;
+    font-family: var(--font-mono);
+  }
+  /* Connected state: one summary line + a Details disclosure */
+  .mi-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mi-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #16a34a;
+    flex: none;
+    align-self: center;
+  }
+  .mi-dot.is-down { background: #d97706; }
+  .mi-name { font-weight: 600; font-size: 0.95rem; color: var(--ink); }
+  .mi-ip   { font-size: 0.8rem; color: var(--ink-faint); }
+
+  .details-toggle {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 8px 0 0;
+    margin: 0;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+  .details-toggle:hover { color: var(--ink); }
+  .details-caret {
+    display: inline-block;
+    transition: transform 0.15s;
+    font-size: 0.7rem;
+  }
+  .details-toggle[aria-expanded="true"] .details-caret { transform: rotate(90deg); }
+  .details-body {
+    font-size: 0.8rem;
+    line-height: 1.7;
+    margin-top: 6px;
+  }
+  .details-body > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .details-body span:first-child { color: var(--ink-faint); }
+  .details-body span:last-child  { color: var(--ink); font-family: var(--font-mono); font-size: 0.75rem; }
+
+  .recent-machines {
+    margin-top: 20px;
+    border-top: 1px solid var(--rule);
+    padding-top: 16px;
+  }
+  .recent-machines h3 {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  .machine-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 6px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .machine-btn:hover { background: var(--surface); border-color: var(--accent); }
+  .machine-btn .m-name { font-weight: 500; font-size: 0.9rem; color: var(--ink); }
+  .machine-btn .m-ip   { font-size: 0.8rem; color: var(--ink-faint); font-family: var(--font-mono); }
+
+  /* Auto-send folder watchers */
+  .watcher {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--bg);
+  }
+  .watcher:last-child { margin-bottom: 0; }
+  .watcher__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .watcher__name { font-weight: 600; font-size: 0.9rem; color: var(--ink); }
+  /* One line, ellipsised. The full Google Drive path is ~90 characters of
+     shortcut ID that nobody reads but which ate three lines of the card —
+     it lives in the tooltip now. */
+  .watcher__dir {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: left;
+    margin-bottom: 6px;
+    cursor: default;
+  }
+  .watcher__stats { font-size: 0.78rem; color: var(--ink-faint); }
+  .watcher__last  { font-size: 0.78rem; color: var(--ink); margin-top: 2px; }
+  .watcher__last b { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500; }
+  .watcher__pending {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--butter-ink);
+    line-height: 1.6;
+    /* A long queue scrolls inside the card rather than pushing the second
+       machine's card off the screen — which is exactly when you most need to
+       see both of them. */
+    max-height: 6.5em;
+    overflow-y: auto;
+  }
+  .watcher__detail {
+    font-size: 0.78rem;
+    color: var(--butter-ink);
+    background: var(--butter-wash);
+    border-radius: var(--radius);
+    padding: 6px 8px;
+    margin-top: 8px;
+    line-height: 1.5;
+    /* Hard ceiling: an unexpectedly chatty error must never push the rest of
+       the panel off screen. Scroll it instead. */
+    max-height: 5.5em;
+    overflow-y: auto;
+  }
+  .watcher__feed {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 8px 0 0;
+    border-top: 1px solid var(--rule);
+    font-size: 0.74rem;
+    line-height: 1.6;
+  }
+  .watcher__event { color: var(--ink-faint); word-break: break-word; }
+  .watcher__event--ok    { color: #166534; }
+  .watcher__event--error { color: #b91c1c; }
+
+  /* Machine switcher */
+  .machine-tabs {
+    display: flex;
+    gap: 4px;
+    margin: -4px 0 20px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .machine-tabs:empty { display: none; }
+  .machine-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--ink-faint);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .machine-tab:hover { color: var(--ink); }
+  .machine-tab[aria-selected="true"] {
+    color: var(--ink);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
+  /* A dot per machine, so you can see one is offline without switching to it. */
+  .machine-tab__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #16a34a;
+    flex: none;
+  }
+  .machine-tab__dot--off      { background: #b91c1c; }
+  .machine-tab__dot--unknown  { background: var(--rule); }
+
+  /* Files panel */
+  .files-panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    min-height: 400px;
+  }
+  .files-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .files-header h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--ink);
+  }
+  .busy-banner {
+    display: none;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: var(--butter-wash);
+    border: 1px solid var(--butter-soft);
+    color: var(--butter-ink);
+    font-size: 0.88rem;
+  }
+  .busy-banner.is-visible { display: block; }
+  .files-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .path-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 14px;
+  }
+  .path-bar:empty { display: none; }
+  .path-sep {
+    color: var(--ink-faint);
+    font-size: 0.8rem;
+    user-select: none;
+    padding: 0 2px;
+  }
+  .path-crumb {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    border-radius: var(--radius);
+  }
+  .path-crumb:hover { background: var(--bg); }
+  .path-crumb--current {
+    color: var(--ink);
+    font-weight: 500;
+    cursor: default;
+  }
+  .path-crumb--current:hover { background: transparent; }
+  .frow-dir { cursor: pointer; }
+  .frow-dir .fname { font-weight: 500; }
+
+  .file-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+  .file-table th {
+    text-align: left;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    padding: 0 8px 10px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .file-table th:first-child {
+    width: 32px;
+    padding: 0 4px 10px;
+    text-align: center;
+  }
+  .file-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: middle;
+  }
+  .file-table td:first-child {
+    width: 32px;
+    padding: 10px 4px;
+    text-align: center;
+  }
+  .file-table input[type="checkbox"] {
+    cursor: pointer;
+  }
+  .file-table tr:last-child td { border-bottom: none; }
+  .file-table tr:hover td { background: var(--bg); }
+  .file-table .fname {
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    color: var(--ink);
+  }
+  .file-table .fsize {
+    color: var(--ink-faint);
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+  .file-table .fdate {
+    color: var(--ink-faint);
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+  .file-table .factions {
+    text-align: right;
+    white-space: nowrap;
+  }
+  /* Local extensions to the hub design system's .button */
+  .button--sm {
+    padding: 4px 10px;
+    font-size: 0.8rem;
+  }
+  .button--danger {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+  }
+  .button--danger:hover { background: #fca5a5; }
+  .button--ghost:disabled,
+  .button--danger:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--ink-faint);
+  }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+  .empty-state p { margin: 4px 0; }
+
+  .upload-divider {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 28px 0 24px;
+  }
+  .upload-drop {
+    border: 2px dashed var(--butter-soft);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--butter-ink);
+    background: var(--butter-wash);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .upload-drop:hover, .upload-drop.drag-over {
+    border-color: var(--butter);
+    background: var(--butter-soft);
+    color: var(--ink);
+  }
+  .upload-drop input { display: none; }
+
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 1000;
+  }
+  .toast {
+    background: var(--ink);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: var(--radius);
+    font-size: 0.88rem;
+    box-shadow: var(--shadow-md);
+    animation: slide-in 0.2s ease;
+    max-width: 320px;
+  }
+  .toast.toast--error { background: #b91c1c; }
+  .toast.toast--ok    { background: #15803d; }
+  @keyframes slide-in {
+    from { transform: translateY(12px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  /* Badge variants */
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+  .badge--warning { background: #fef3c7; color: #92400e; }
+  .badge--ok      { background: #dcfce7; color: #166534; }
+
+  /* Confirm modal */
+  .confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+  .confirm-overlay.is-open { display: flex; }
+  .confirm-dialog {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+  }
+  .confirm-dialog h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+  .confirm-dialog p {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--ink-faint);
+    margin: 0 0 20px;
+  }
+  .confirm-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .confirm-buttons button {
+    flex: 0 1 auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="layout">
+
+  <!-- ── Left: connection ─────────────────────────────────────────── -->
+  <aside>
+    <div class="connect-panel">
+      <h2>Controller</h2>
+
+      <!-- Shown only while disconnected. Once connected, the address, the name
+           box and the recent-machines list have all done their job, and the
+           auto-send panel below is what people actually watch. -->
+      <div id="connect-form">
+        <div class="ip-row">
+          <input id="ip-input" type="text" class="input" placeholder="192.168.0.45"
+                 value="" spellcheck="false" autocomplete="off">
+          <button id="search-btn" class="button button--ghost" title="Scan subnet">⌕</button>
+        </div>
+        <input id="name-input" type="text" class="input" placeholder="Machine name (optional)"
+               style="width:100%;margin-bottom:12px">
+        <button id="connect-btn" class="button button--primary" style="width:100%">Connect</button>
+
+        <div class="recent-machines">
+          <h3>Recent machines</h3>
+          <div id="recent-list"></div>
+        </div>
+      </div>
+
+      <!-- Shown only while connected: one line, with the rarely-needed
+           identity fields folded away behind Details. -->
+      <div id="machine-info" style="display:none">
+        <div class="mi-summary">
+          <span class="mi-dot" id="mi-dot"></span>
+          <span class="mi-name" id="info-name">—</span>
+          <span class="mi-ip mono" id="info-ip">—</span>
+        </div>
+
+        <button id="details-toggle" class="details-toggle" aria-expanded="false"
+                aria-controls="details-body">
+          <span class="details-caret">▸</span> Details
+        </button>
+        <div id="details-body" class="details-body" hidden>
+          <div><span>ID</span><span id="info-id">—</span></div>
+          <div><span>Serial</span><span id="info-serial">—</span></div>
+          <div><span>OS</span><span id="info-os">—</span></div>
+          <div><span>Permissions</span><span id="info-perm">—</span></div>
+          <div><span>Units</span><span id="info-units">—</span></div>
+        </div>
+
+        <button id="disconnect-btn" class="button button--ghost button--sm"
+                style="width:100%;margin-top:10px">Disconnect</button>
+      </div>
+    </div>
+
+    <div class="connect-panel" id="watchers-panel" style="display:none;margin-top:16px">
+      <h2>Auto-send folders</h2>
+      <div id="watchers-list"></div>
+    </div>
+  </aside>
+
+  <!-- ── Right: files ─────────────────────────────────────────────── -->
+  <section>
+    <div class="files-panel">
+      <div class="machine-tabs" id="machine-tabs" role="tablist"></div>
+
+      <div class="files-header">
+        <h2 id="files-title">Job files</h2>
+        <div class="files-actions">
+          <button id="home-btn" class="button button--ghost button--sm" style="display:none" disabled title="Back to jobs folder">⌂ Jobs</button>
+          <button id="up-btn" class="button button--ghost button--sm" style="display:none" disabled title="Up one folder">↑ Up</button>
+          <button id="refresh-btn" class="button button--ghost button--sm" disabled>↻ Refresh</button>
+          <button id="delete-selected-btn" class="button button--sm button--danger" style="display:none" disabled>✕ Delete selected (0)</button>
+        </div>
+      </div>
+
+      <div id="busy-banner" class="busy-banner" role="status"></div>
+
+      <div id="path-bar" class="path-bar"></div>
+
+      <div id="files-empty" class="empty-state">
+        <div class="icon">⚡</div>
+        <p style="font-weight:500">Connect to a controller to see files</p>
+        <p>Enter the machine IP on the left and click Connect</p>
+      </div>
+
+      <table id="files-table" class="file-table" style="display:none">
+        <thead>
+          <tr>
+            <th><input id="select-all" type="checkbox"></th>
+            <th>File</th>
+            <th>Size</th>
+            <th>Modified</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="files-tbody"></tbody>
+      </table>
+
+      <hr id="upload-divider" class="upload-divider" style="display:none">
+      <label id="upload-drop" class="upload-drop" style="display:none">
+        <input id="upload-input" type="file" accept=".nc" multiple>
+        ↑ Drop .nc files here, or click to browse
+      </label>
+    </div>
+  </section>
+
+</div>
+
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-dialog">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-body"></p>
+    <div class="confirm-buttons">
+      <button id="confirm-cancel" class="button button--ghost">Cancel</button>
+      <button id="confirm-ok" class="button button--primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js?v={{ static_version | default('1') }}"></script>
+{% endblock %}

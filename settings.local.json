@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"C:/Users/leejp/Documents/Claude/projects/Multicam Post/cnc-file-manager\" 2>/dev/null; echo \"---PARENT---\"; ls -la \"C:/Users/leejp/Documents/Claude/projects/Multicam Post\")",
+      "PowerShell(Write-Output \"=== python ===\"; \\(Get-Command python -ErrorAction SilentlyContinue\\).Source; python --version 2>&1; Write-Output \"=== py launcher ===\"; \\(Get-Command py -ErrorAction SilentlyContinue\\).Source; py --version 2>&1; Write-Output \"=== python3 ===\"; \\(Get-Command python3 -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell($proj = \"C:\\\\Users\\\\leejp\\\\Documents\\\\Claude\\\\projects\\\\Multicam Post\\\\cnc-file-manager\"; & \"$proj\\\\.venv\\\\Scripts\\\\python.exe\" -m pip install -r \"$proj\\\\requirements.txt\" 2>&1 | Select-Object -Last 15)",
+      "PowerShell(Write-Output \"=== Firewall rule ===\"; $r = Get-NetFirewallRule -DisplayName 'CNC File Manager \\(8097\\)' -ErrorAction SilentlyContinue; if \\($r\\) { $pf = $r | Get-NetFirewallPortFilter; $af = $r | Get-NetFirewallAddressFilter; [PSCustomObject]@{ Enabled=$r.Enabled; Direction=$r.Direction; Action=$r.Action; Profile=$r.Profile; Protocol=$pf.Protocol; LocalPort=$pf.LocalPort; RemoteAddress=$af.RemoteAddress } | Format-List | Out-String } else { Write-Output \"RULE NOT FOUND\" }; Write-Output \"=== Wi-Fi network category ===\"; Get-NetConnectionProfile | Where-Object { $_.IPv4Connectivity -ne 'Disconnected' } | Select-Object Name, InterfaceAlias, NetworkCategory | Format-Table -AutoSize | Out-String)"
+    ]
+  }
+}
